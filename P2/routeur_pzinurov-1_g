@@ -1,0 +1,65 @@
+#!/bin/sh
+# ===========================================================================
+#  P2 / routeur_pzinurov-1      image: badass/router    MODE: *MULTICAST (g)*
+# ---------------------------------------------------------------------------
+#  Same VTEP as routeur_pzinurov-1_s, but the flooding list is no longer
+#  written by hand: the tunnel joins an IP multicast GROUP and every VTEP that
+#  joined the same group receives the BUM traffic (Broadcast, Unknown unicast,
+#  Multicast) of the VNI.
+#
+#      "group 239.1.1.1"   instead of   "remote 10.1.1.2"
+#
+#  What changes on the wire:
+#    * on link-up the kernel sends an IGMP membership report for 239.1.1.1
+#      out of eth0;
+#    * a BUM frame is encapsulated once, to 239.1.1.1, and the underlay
+#      replicates it - no per-peer configuration, this is what makes it
+#      "dynamic".
+#  MAC learning is still done in the data plane by br0 (flood-and-learn);
+#  part 3 replaces that with a control plane: BGP EVPN.
+#
+#  239.1.1.1 is in the administratively-scoped block 239.0.0.0/8 (RFC 2365).
+# ===========================================================================
+set -e
+
+. /badass/lab/env.sh 2>/dev/null || { VNI=10; VXDEV=vxlan10; BRIDGE=br0; VXPORT=4789; MCAST_GROUP=239.1.1.1; }
+
+UNDERLAY_IF=eth0 ; UNDERLAY_IP=10.1.1.1/24
+ACCESS_IF=eth1
+
+# ---------------------------------------------------------------- underlay --
+ip addr flush dev "$UNDERLAY_IF" 2>/dev/null || true
+ip link set "$UNDERLAY_IF" up
+ip addr add "$UNDERLAY_IP" dev "$UNDERLAY_IF"
+
+# multicast must be allowed on the underlay interface (it is, by default)
+ip link set "$UNDERLAY_IF" multicast on
+
+# ------------------------------------------------------------------ bridge --
+ip link del "$BRIDGE" 2>/dev/null || true
+ip link add "$BRIDGE" type bridge
+ip link set "$BRIDGE" up
+
+# ------------------------------------------------------------------- vxlan --
+#   group 239.1.1.1   -> dynamic multicast flooding, replaces "remote"
+#   dev eth0          -> interface used to join the group and send the traffic
+ip link del "$VXDEV" 2>/dev/null || true
+ip link add "$VXDEV" type vxlan \
+        id "$VNI" \
+        dev "$UNDERLAY_IF" \
+        group "$MCAST_GROUP" \
+        dstport "$VXPORT"
+ip link set "$VXDEV" master "$BRIDGE"
+ip link set "$VXDEV" up
+
+# ------------------------------------------------------------ access port ---
+ip addr flush dev "$ACCESS_IF" 2>/dev/null || true
+ip link set "$ACCESS_IF" master "$BRIDGE"
+ip link set "$ACCESS_IF" up
+
+echo "### $(hostname)  VNI $VNI  group $MCAST_GROUP (dynamic multicast)"
+ip -d link show "$VXDEV" | sed 's/^/    /'
+echo "### IGMP membership on $UNDERLAY_IF:"
+(ip maddr show dev "$UNDERLAY_IF" | sed 's/^/    /') 2>/dev/null
+echo "### mac address table (brctl showmacs $BRIDGE):"
+brctl showmacs "$BRIDGE" | sed 's/^/    /'

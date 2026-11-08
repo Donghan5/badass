@@ -1,0 +1,74 @@
+#!/bin/sh
+# ===========================================================================
+#  P2 / routeur_pzinurov-1      image: badass/router        MODE: *STATIC*
+# ---------------------------------------------------------------------------
+#  VTEP (VXLAN Tunnel End Point) number 1, static / unicast flavour.
+#
+#      host_pzinurov-1          Switch_pzinurov          host_pzinurov-2
+#            |                      |      |                   |
+#           eth1                   e0      e1                 eth1
+#            |                      |      |                   |
+#     [ routeur_pzinurov-1 ]-eth0--+      +--eth0-[ routeur_pzinurov-2 ]
+#            br0                                           br0
+#         (vxlan10 + eth1)                             (vxlan10 + eth1)
+#
+#  Underlay  10.1.1.0/24   : the real, routable transport network (eth0)
+#  Overlay   VNI 10        : the emulated L2 segment carried inside UDP/4789
+#
+#  STATIC mode: the remote VTEP is pinned by hand with "remote 10.1.1.2".
+#  The kernel installs a default (00:00:00:00:00:00) entry in the vxlan FDB
+#  pointing at that address, so every unknown-unicast / broadcast / multicast
+#  frame entering br0 is replicated to that single peer.  Simple, but it does
+#  not scale: with N VTEPs you need N-1 "remote" entries on each of them.
+# ===========================================================================
+set -e
+
+. /badass/lab/env.sh 2>/dev/null || { VNI=10; VXDEV=vxlan10; BRIDGE=br0; VXPORT=4789; }
+
+UNDERLAY_IF=eth0 ; UNDERLAY_IP=10.1.1.1/24 ; LOCAL_VTEP=10.1.1.1
+REMOTE_VTEP=10.1.1.2
+ACCESS_IF=eth1                      # port facing host_pzinurov-1
+
+# ---------------------------------------------------------------- underlay --
+ip addr flush dev "$UNDERLAY_IF" 2>/dev/null || true
+ip link set "$UNDERLAY_IF" up
+ip addr add "$UNDERLAY_IP" dev "$UNDERLAY_IF"
+
+# ------------------------------------------------------------------ bridge --
+# br0 is the "virtual switch" of the VXLAN segment: everything plugged into it
+# (the access port and the tunnel) belongs to the same broadcast domain.
+ip link del "$BRIDGE" 2>/dev/null || true
+ip link add "$BRIDGE" type bridge
+ip link set "$BRIDGE" up
+
+# ------------------------------------------------------------------- vxlan --
+#   id $VNI      VXLAN Network Identifier (24 bits) - the subject asks for 10
+#   dev eth0     interface used to reach the remote VTEP
+#   local        source IP written in the outer IP header
+#   remote       the one and only peer, in static mode
+#   dstport 4789 IANA destination UDP port for VXLAN (RFC 7348)
+ip link del "$VXDEV" 2>/dev/null || true
+ip link add "$VXDEV" type vxlan \
+        id "$VNI" \
+        dev "$UNDERLAY_IF" \
+        local "$LOCAL_VTEP" \
+        remote "$REMOTE_VTEP" \
+        dstport "$VXPORT"
+ip link set "$VXDEV" master "$BRIDGE"
+ip link set "$VXDEV" up
+
+# ------------------------------------------------------------ access port ---
+ip addr flush dev "$ACCESS_IF" 2>/dev/null || true
+ip link set "$ACCESS_IF" master "$BRIDGE"
+ip link set "$ACCESS_IF" up
+
+# NOTE: no routing daemon is started in part 2.  Both VTEPs sit on the same
+# 10.1.1.0/24 segment behind Switch_pzinurov, so there is nothing to route;
+# bgpd/ospfd/isisd are present in the image (part 1) and come back in part 3.
+
+echo "### $(hostname)  VTEP $LOCAL_VTEP -> $REMOTE_VTEP   VNI $VNI (static)"
+ip -d link show "$VXDEV" | sed 's/^/    /'
+echo "### bridge $BRIDGE ports:"
+ls /sys/class/net/"$BRIDGE"/brif | sed 's/^/    /'
+echo "### vxlan fdb:"
+bridge fdb show dev "$VXDEV" | sed 's/^/    /'

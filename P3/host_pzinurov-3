@@ -1,0 +1,24 @@
+#!/bin/sh
+# ===========================================================================
+#  P3 / host_pzinurov-3        image: badass/host
+# ---------------------------------------------------------------------------
+#  Tenant machine plugged on the access port of _pzinurov-4 (eth0 side).
+#  It only knows a flat /24 - 20.1.1.0/24 - and has no idea that the segment
+#  is stitched together by VXLAN tunnels driven by BGP EVPN.
+#
+#  As soon as this interface sends its first frame, _pzinurov-4 learns the MAC on
+#  br0 and bgpd exports it to the route reflector as an EVPN route TYPE 2,
+#  which the two other leaves install in their vxlan fdb.  No IP address is
+#  ever advertised by the VTEP: part 3 is pure layer 2 (no MPLS, no L3VNI).
+# ===========================================================================
+set -e
+
+IFACE=eth0
+ADDR=20.1.1.3/24
+
+ip addr flush dev "$IFACE" 2>/dev/null || true
+ip link set "$IFACE" up
+ip addr add "$ADDR" dev "$IFACE"
+
+echo "### $(hostname): $IFACE = $ADDR  mac $(cat /sys/class/net/$IFACE/address)"
+ip -br addr show "$IFACE"

@@ -1,0 +1,24 @@
+#!/bin/sh
+# ===========================================================================
+#  P2 / host_pzinurov-2        image: badass/host
+# ---------------------------------------------------------------------------
+#  An ordinary end device.  It knows nothing about VXLAN: as far as it is
+#  concerned it sits on a plain /24 ethernet segment together with the other
+#  host.  That is the whole point of a VXLAN - the overlay is transparent to
+#  the tenants, the encapsulation happens inside the two routers (the VTEPs).
+#
+#    host_pzinurov-2  eth1 ---- eth1  routeur_pzinurov-2   (access port of br0)
+#
+#  Overlay subnet : 30.1.1.0/24   (not routed anywhere, L2 only)
+# ===========================================================================
+set -e
+
+IFACE=eth1
+ADDR=30.1.1.2/24
+
+ip addr flush dev "$IFACE" 2>/dev/null || true
+ip link set "$IFACE" up
+ip addr add "$ADDR" dev "$IFACE"
+
+echo "### $(hostname): $IFACE = $ADDR"
+ip -br addr show "$IFACE"

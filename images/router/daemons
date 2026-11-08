@@ -1,0 +1,40 @@
+# FRR daemons enabled in this image (read by /usr/local/bin/frr-start).
+#
+# mgmtd : management daemon.  Since FRR 9/10 the "interface ... ip address"
+#         configuration is owned by mgmtd, so without it every interface
+#         address in frr.conf is silently dropped.  It must start first.
+# zebra : RIB manager / kernel dataplane + VXLAN-VNI discovery for EVPN
+# bgpd  : BGP-4 (RFC 4271) + MP-BGP (RFC 4760) + EVPN AF (RFC 7432)
+# ospfd : OSPFv2, used as the underlay IGP in part 3
+# isisd : IS-IS routing engine (required by the subject)
+mgmtd=yes
+zebra=yes
+bgpd=yes
+ospfd=yes
+isisd=yes
+staticd=yes
+
+ripd=no
+ripngd=no
+ospf6d=no
+ldpd=no
+nhrpd=no
+eigrpd=no
+babeld=no
+pimd=no
+pim6d=no
+pbrd=no
+bfdd=no
+fabricd=no
+vrrpd=no
+pathd=no
+
+# Daemon options.  -A 127.0.0.1 keeps every VTY socket on the loopback.
+mgmtd_options="  -A 127.0.0.1"
+zebra_options="  -A 127.0.0.1 -s 90000000"
+bgpd_options="   -A 127.0.0.1"
+ospfd_options="  -A 127.0.0.1"
+isisd_options="  -A 127.0.0.1"
+staticd_options=" -A 127.0.0.1"
+
+vtysh_enable=yes

@@ -1,0 +1,80 @@
+#!/bin/sh
+# ===========================================================================
+#  P1 / routeur_pzinurov        image: badass/router  (alpine + FRRouting)
+# ---------------------------------------------------------------------------
+#  The subject requires this image to carry, *active and configured*:
+#     - a packet routing manager (zebra or quagga)  -> zebra
+#     - BGPD                                        -> bgpd
+#     - OSPFD                                       -> ospfd
+#     - an IS-IS routing engine                     -> isisd
+#     - busybox or equivalent                       -> alpine/busybox
+#
+#  So part 1 does exactly that: it starts the four daemons and gives each
+#  routing engine a minimal but real configuration.  Still no interface
+#  address: "No IP address should be configured by default" - only the
+#  loopback router-id, which is what identifies a router, not an interface.
+#
+#  Run it from the GNS3 console:   sh /badass/P1/routeur_pzinurov
+# ===========================================================================
+set -e
+ 
+RID=1.1.1.254                       # router-id / loopback of this lone router
+NET=49.0001.0000.0000.0254.00       # IS-IS NET: area 49.0001, sysid from RID
+
+cat > /etc/frr/frr.conf <<'FRR'
+frr version 10.0
+frr defaults traditional
+hostname routeur_pzinurov
+service integrated-vtysh-config
+!
+! a router forwards: switch the kernel dataplane on
+ip forwarding
+!
+! ---------------------------------------------------------------- loopback --
+interface lo
+ ip address 1.1.1.254/32
+exit
+!
+! --------------------------------------------------------------------- BGP --
+! "The service BGPD active and configured"
+router bgp 65001
+ bgp router-id 1.1.1.254
+ no bgp ebgp-requires-policy
+ !
+ ! the EVPN address family that part 3 will use (MP-BGP, RFC 4760 / 7432)
+ address-family l2vpn evpn
+ exit-address-family
+exit
+!
+! -------------------------------------------------------------------- OSPF --
+! "The service OSPFD active and configured"
+router ospf
+ ospf router-id 1.1.1.254
+ network 1.1.1.254/32 area 0
+exit
+!
+! ------------------------------------------------------------------- IS-IS --
+! "An IS-IS routing engine service"
+router isis BADASS
+ is-type level-2-only
+ net 49.0001.0000.0000.0254.00
+exit
+!
+line vty
+!
+FRR
+chown frr:frr /etc/frr/frr.conf
+chmod 0640  /etc/frr/frr.conf
+
+frr-start
+
+echo
+echo "### node    : $(hostname)   router-id $RID   isis-net $NET"
+echo "### daemons :"
+for d in zebra bgpd ospfd isisd; do
+    if pidof "$d" >/dev/null 2>&1; then echo "    $d        ACTIVE"
+    else                                    echo "    $d        DOWN"; fi
+done
+echo
+echo "### vtysh 'show running-config':"
+vtysh -c 'show running-config' | sed 's/^/    /'

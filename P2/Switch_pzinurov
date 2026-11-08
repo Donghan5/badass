@@ -1,0 +1,27 @@
+#!/bin/sh
+# ===========================================================================
+#  P2 / Switch_pzinurov
+# ---------------------------------------------------------------------------
+#  In GNS3 this node is the built-in "Ethernet switch" (not a container):
+#  an unmanaged L2 switch, both ports in VLAN 1, access mode.
+#
+#      Switch_pzinurov e0 ---- eth0 routeur_pzinurov-1
+#      Switch_pzinurov e1 ---- eth0 routeur_pzinurov-2
+#
+#  It carries the UNDERLAY only (10.1.1.0/24).  It has no IP address and no
+#  knowledge of VXLAN whatsoever - for the switch the tunnel is just UDP
+#  traffic towards port 4789.
+#
+#  There is nothing to configure on it.  The headless lab reproduces it with
+#  a linux bridge inside the VM (lab/lib.sh: switch_add), with multicast
+#  snooping disabled so that the bridge FLOODS multicast like an unmanaged
+#  switch does.  Without that, the "group 239.1.1.1" mode of part 2 would be
+#  dropped for lack of an IGMP querier on the segment.
+#
+#  Equivalent commands, if you ever want to replace it by a linux bridge:
+#       ip link add Switch_pzinurov type bridge
+#       echo 0 > /sys/class/net/Switch_pzinurov/bridge/multicast_snooping
+#       echo 0 > /sys/class/net/Switch_pzinurov/bridge/stp_state
+#       ip link set Switch_pzinurov up
+# ===========================================================================
+echo "Switch_pzinurov is a GNS3 built-in Ethernet switch - nothing to configure."

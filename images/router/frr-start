@@ -1,0 +1,39 @@
+#!/bin/sh
+# ---------------------------------------------------------------------------
+# Start the FRR daemons listed in /etc/frr/daemons, then push /etc/frr/frr.conf
+# into all of them with "vtysh -b" (integrated configuration).
+#
+# No init system is used on purpose: in a container (GNS3 node or lab node) we
+# want the routing engines up, deterministically, with one command.
+# ---------------------------------------------------------------------------
+set -e
+
+CONF=/etc/frr/frr.conf
+install -d -o frr -g frr -m 0755 /var/run/frr /var/log/frr
+[ -f "$CONF" ] || : > "$CONF"
+chown frr:frr "$CONF"; chmod 0640 "$CONF"
+
+# shellcheck disable=SC1091
+. /etc/frr/daemons
+
+started=""
+for d in mgmtd zebra bgpd ospfd isisd staticd; do
+    eval "enabled=\${$d:-no}"
+    [ "$enabled" = "yes" ] || continue
+    eval "opts=\${${d}_options:-}"
+    pidof "$d" >/dev/null 2>&1 && continue
+    # shellcheck disable=SC2086
+    "/usr/lib/frr/$d" -d $opts
+    started="$started $d"
+done
+
+# wait for the vty sockets before applying the configuration: mgmtd owns the
+# interface addresses, zebra owns the RIB - both must be listening or part of
+# frr.conf would be dropped on the floor
+i=0
+while { [ ! -S /var/run/frr/mgmtd.vty ] || [ ! -S /var/run/frr/zebra.vty ]; } \
+      && [ $i -lt 100 ]; do i=$((i+1)); sleep 0.1; done
+
+vtysh -b >/dev/null 2>&1 || vtysh -b
+
+echo "frr started:$started"

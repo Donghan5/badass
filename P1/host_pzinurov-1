@@ -1,0 +1,28 @@
+#!/bin/sh
+# ===========================================================================
+#  P1 / host_pzinurov-1          image: badass/host  (alpine = busybox)
+# ---------------------------------------------------------------------------
+#  Part 1 only asks for the two images to exist and for both nodes to be
+#  reachable from the GNS3 console.  There is no link on the part 1 diagram,
+#  so this node is deliberately left WITHOUT any IP address - the subject is
+#  explicit: "No IP address should be configured by default."
+#
+#  This script is therefore a proof sheet: it shows that the image really is
+#  busybox based and that the node boots clean.
+#  Run it from the GNS3 console:   sh /badass/P1/host_pzinurov-1
+# ===========================================================================
+set -e
+
+echo "### node    : $(hostname)"
+echo "### busybox : $(busybox | head -1)"
+echo "### shell   : $(readlink -f /bin/sh)"
+
+echo
+echo "### applets available (subject: 'at least busybox or an equivalent'):"
+for a in ip ifconfig ping arp route netstat brctl tcpdump telnet; do
+    p=$(command -v "$a" 2>/dev/null) && echo "    $a -> $p"
+done
+
+echo
+echo "### interfaces (no address configured by default):"
+ip -br addr show

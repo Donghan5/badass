@@ -1,0 +1,101 @@
+#!/bin/sh
+# ===========================================================================
+#  P3 / _pzinurov-1      image: badass/router        ROLE: SPINE + BGP RR
+# ---------------------------------------------------------------------------
+#                            _pzinurov-1   (RR, 1.1.1.1)
+#                      e0 /       e1 |        \ e2
+#          10.1.1.0/30 /    10.1.1.4/30 \  10.1.1.8/30
+#                    /             |         \
+#            _pzinurov-2     _pzinurov-3    _pzinurov-4      <- leaves / VTEPs
+#                 |                |              |
+#          host_pzinurov-1  host_pzinurov-2  host_pzinurov-3
+#
+#  This node is the controller of the little data centre:
+#    * OSPF area 0 distributes the underlay, and above all the /32 loopbacks,
+#      which are the addresses the BGP sessions and the VXLAN tunnels use;
+#    * BGP AS 1 (iBGP) with the three leaves, address family l2vpn evpn, and
+#      every leaf declared "route-reflector-client".
+#
+#  Why a route reflector: iBGP does not re-advertise a route learned from one
+#  iBGP peer to another iBGP peer (split horizon).  With 3 leaves you would
+#  need a full mesh, i.e. n(n-1)/2 sessions.  The RR is explicitly allowed to
+#  reflect, so each leaf keeps ONE session and still learns everybody's MACs.
+#
+#  This node carries NO VXLAN and NO bridge: it never sees a tenant frame, it
+#  only moves EVPN NLRI around.  That is the whole point of a control plane.
+# ===========================================================================
+set -e
+
+cat > /etc/frr/frr.conf <<'FRR'
+frr version 10.0
+frr defaults traditional
+hostname _pzinurov-1
+service integrated-vtysh-config
+!
+ip forwarding
+!
+! ----------------------------------------------------------- loopback / RID --
+! advertised by OSPF; it is the BGP update-source of every leaf session and
+! the address the VTEPs resolve as EVPN next-hop.
+interface lo
+ ip address 1.1.1.1/32
+exit
+!
+! ------------------------------------------------------- underlay interfaces --
+interface eth0
+ description p2p -> _pzinurov-2
+ ip address 10.1.1.1/30
+ ip ospf network point-to-point
+exit
+interface eth1
+ description p2p -> _pzinurov-3
+ ip address 10.1.1.5/30
+ ip ospf network point-to-point
+exit
+interface eth2
+ description p2p -> _pzinurov-4
+ ip address 10.1.1.9/30
+ ip ospf network point-to-point
+exit
+!
+! --------------------------------------------------------- underlay routing --
+! "You will have to use OSPF to simplify the evaluation."
+router ospf
+ ospf router-id 1.1.1.1
+ network 1.1.1.1/32 area 0
+ network 10.1.1.0/24 area 0
+exit
+!
+! ------------------------------------------------------- overlay control plane --
+router bgp 1
+ bgp router-id 1.1.1.1
+ bgp log-neighbor-changes
+ no bgp default ipv4-unicast
+ !
+ ! one peer-group for the three leaves: same policy for everybody
+ neighbor LEAFS peer-group
+ neighbor LEAFS remote-as 1
+ neighbor LEAFS update-source lo
+ neighbor LEAFS description leaf / VTEP
+ !
+ neighbor 1.1.1.2 peer-group LEAFS
+ neighbor 1.1.1.3 peer-group LEAFS
+ neighbor 1.1.1.4 peer-group LEAFS
+ !
+ ! EVPN (RFC 7432) carried by MP-BGP (RFC 4760)
+ address-family l2vpn evpn
+  neighbor LEAFS activate
+  neighbor LEAFS route-reflector-client
+ exit-address-family
+exit
+!
+line vty
+!
+FRR
+chown frr:frr /etc/frr/frr.conf; chmod 0640 /etc/frr/frr.conf
+
+frr-start
+
+echo "### $(hostname)  SPINE / route-reflector  1.1.1.1  AS 1"
+echo "### ospf neighbors:"  ; vtysh -c 'show ip ospf neighbor'       | sed 's/^/    /'
+echo "### bgp l2vpn evpn:"  ; vtysh -c 'show bgp l2vpn evpn summary' | sed 's/^/    /'
