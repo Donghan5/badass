@@ -143,6 +143,9 @@ def docker_node(name, image, adapters, symbol, x, y, console, start_command=""):
         "port_segment_size": 0,
         "properties": {
             "adapters": adapters,
+            # Docker nodes need both a main console and an auxiliary console.
+            # Reserve adjacent pairs; callers must leave the next port free.
+            "aux": console + 1,
             "console_http_path": "/",
             "console_http_port": 80,
             "console_resolution": "1024x768",
@@ -166,7 +169,7 @@ def docker_node(name, image, adapters, symbol, x, y, console, start_command=""):
 def selfconfig(part, node):
     """Start command that applies the node's own committed config, then drops
     into a shell, so pressing Play in GNS3 is enough to build the part."""
-    return "/bin/sh -c 'sh /badass/%s/%s; exec /bin/sh'" % (part, node)
+    return "/bin/sh -c 'sh /badass/%s/%s && exec /bin/sh'" % (part, node)
 
 
 def project_p1():
@@ -177,7 +180,7 @@ def project_p1():
         "nodes": [
             docker_node(host, IMG_HOST, 2, SYM_HOST, -220, -60, 5000,
                         selfconfig("P1", host)),
-            docker_node(router, IMG_ROUTER, 4, SYM_ROUTER, 40, -90, 5001,
+            docker_node(router, IMG_ROUTER, 4, SYM_ROUTER, 40, -90, 5002,
                         selfconfig("P1", router)),
         ],
         "links": [],
@@ -233,17 +236,18 @@ def project_p2(mode="static"):
     if mode not in ("static", "multicast"):
         raise ValueError("P2 mode must be static or multicast")
     suffix = "_s" if mode == "static" else "_g"
+    console_base = 5010 if mode == "static" else 5040
     hosts = [f"host_{LOGIN}-{i}" for i in (1, 2)]
     routers = [f"routeur_{LOGIN}-{i}" for i in (1, 2)]
     h1, h2 = [
         docker_node(name, IMG_HOST, 2, SYM_HOST, -400, y, console,
                     selfconfig("P2", name))
-        for name, y, console in zip(hosts, (-150, 150), (5010, 5012))
+        for name, y, console in zip(hosts, (-150, 150), (console_base, console_base + 2))
     ]
     r1, r2 = [
         docker_node(name, IMG_ROUTER, 2, SYM_ROUTER, -100, y, console,
                     selfconfig("P2", name + suffix))
-        for name, y, console in zip(routers, (-150, 150), (5014, 5016))
+        for name, y, console in zip(routers, (-150, 150), (console_base + 4, console_base + 6))
     ]
     switch = ethernet_switch(f"Switch_{LOGIN}", 200, 0)
     return {
@@ -263,12 +267,12 @@ def project_p3():
     Start only the routers first for the type-3-only evaluation stage.
     Later, apply sh /badass/P3/host_<login>-N in each host console to add IPv4.
     """
-    rr_name = f"_{LOGIN}-1"
+    rr_name = f"routeur_{LOGIN}-1"
     rr = docker_node(rr_name, IMG_ROUTER, 3, SYM_ROUTER, 0, -250, 5020,
                      selfconfig("P3", rr_name))
     leaves = [
-        docker_node(f"_{LOGIN}-{i}", IMG_ROUTER, 3, SYM_ROUTER,
-                    x, 0, console, selfconfig("P3", f"_{LOGIN}-{i}"))
+        docker_node(f"routeur_{LOGIN}-{i}", IMG_ROUTER, 3, SYM_ROUTER,
+                    x, 0, console, selfconfig("P3", f"routeur_{LOGIN}-{i}"))
         for i, x, console in zip((2, 3, 4), (-300, 0, 300), (5022, 5024, 5026))
     ]
     hosts = [

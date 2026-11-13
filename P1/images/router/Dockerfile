@@ -1,5 +1,5 @@
 # ===========================================================================
-#  BADASS - image 2 : the router / VTEP  ("routeur_<login>-N", "_<login>-N")
+#  BADASS - image 2 : the router / VTEP  ("routeur_<login>-N")
 #
 #  Subject requires, in a single image:
 #    * a packet routing manager (zebra or quagga)      -> FRRouting's zebra

@@ -2,10 +2,10 @@
 # ---------------------------------------------------------------------------
 # P3 topology (subject's diagram):
 #
-#                          _<login>-1  (RR / spine)
+#                          routeur_<login>-1  (RR / spine)
 #                   e0 /        e1 |        \ e2
 #                     /            |         \
-#            _<login>-2      _<login>-3     _<login>-4     (leaves / VTEPs)
+#            routeur_<login>-2      routeur_<login>-3     routeur_<login>-4     (leaves / VTEPs)
 #               e1 |             e0 |          e0 |
 #        host_<login>-1    host_<login>-2   host_<login>-3
 #
@@ -15,8 +15,9 @@
 #                     them up one by one exactly like the subject does.
 # ---------------------------------------------------------------------------
 p3_up() {
-  local staged=0
+  local staged=0 host_state=up
   [ "${1:-}" = "--staged" ] && staged=1
+  [ "$staged" -eq 0 ] || host_state=down
 
   info "P3 - BGP EVPN fabric, VNI $VNI, AS 1, route reflector $P3_RR"
   node_start "$P3_RR" "$IMG_ROUTER"
@@ -32,9 +33,9 @@ p3_up() {
   link "$P3_RR" eth1 "$P3_L3" eth1
   link "$P3_RR" eth2 "$P3_L4" eth2
   # access side
-  link "$P3_L2" eth1 "$P3_H1" eth1
-  link "$P3_L3" eth0 "$P3_H2" eth0
-  link "$P3_L4" eth0 "$P3_H3" eth0
+  link "$P3_L2" eth1 "$P3_H1" eth1 "$host_state"
+  link "$P3_L3" eth0 "$P3_H2" eth0 "$host_state"
+  link "$P3_L4" eth0 "$P3_H3" eth0 "$host_state"
 
   apply "$P3_RR" "P3/$P3_RR"
   apply "$P3_L2" "P3/$P3_L2"
@@ -46,6 +47,6 @@ p3_up() {
     apply "$P3_H2" "P3/$P3_H2"
     apply "$P3_H3" "P3/$P3_H3"
   else
-    step "hosts left unconfigured (staged mode)"
+    step "host interfaces left down and unaddressed (staged mode)"
   fi
 }

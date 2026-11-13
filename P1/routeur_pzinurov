@@ -10,15 +10,15 @@
 #     - busybox or equivalent                       -> alpine/busybox
 #
 #  So part 1 does exactly that: it starts the four daemons and gives each
-#  routing engine a minimal but real configuration.  Still no interface
-#  address: "No IP address should be configured by default" - only the
-#  loopback router-id, which is what identifies a router, not an interface.
+#  routing engine a minimal but real configuration. No interface address is
+#  assigned, including on loopback. A router-id is a protocol identifier;
+#  setting it does not require assigning that address to an interface.
 #
 #  Run it from the GNS3 console:   sh /badass/P1/routeur_pzinurov
 # ===========================================================================
 set -e
  
-RID=1.1.1.254                       # router-id / loopback of this lone router
+RID=1.1.1.254                       # protocol router-id, not an interface IP
 NET=49.0001.0000.0000.0254.00       # IS-IS NET: area 49.0001, sysid from RID
 
 cat > /etc/frr/frr.conf <<'FRR'
@@ -29,11 +29,6 @@ service integrated-vtysh-config
 !
 ! a router forwards: switch the kernel dataplane on
 ip forwarding
-!
-! ---------------------------------------------------------------- loopback --
-interface lo
- ip address 1.1.1.254/32
-exit
 !
 ! --------------------------------------------------------------------- BGP --
 ! "The service BGPD active and configured"
@@ -50,7 +45,6 @@ exit
 ! "The service OSPFD active and configured"
 router ospf
  ospf router-id 1.1.1.254
- network 1.1.1.254/32 area 0
 exit
 !
 ! ------------------------------------------------------------------- IS-IS --

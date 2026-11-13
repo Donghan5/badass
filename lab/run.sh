@@ -19,6 +19,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/topo-p2.sh"
 . "$HERE/topo-p3.sh"
 . "$HERE/check-p1.sh"
+. "$HERE/check-p2.sh"
+. "$HERE/check-p3.sh"
 
 usage() { sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
@@ -35,6 +37,9 @@ part_up() {
 part_check() {
   case "$1" in
     p1)  check_p1 ;;
+    p2)  check_p2 static ;;
+    p2m) check_p2 multicast ;;
+    p3)  check_p3 ;;
     *)   die "no checks wired for '$1' yet" ;;
   esac
   summary
@@ -44,9 +49,11 @@ cmd=${1:-}; shift || true
 case "$cmd" in
   up)    need_root; lab_down; part_up "${1:?part}" "${2:-}" ;;
   check) need_root; part_check "${1:?part}" ;;
-  test)  need_root; lab_down; part_up "${1:?part}" "${2:-}"; part_check "$1" ;;
+  test)  need_root; lab_down
+         stage=${2:-}; [ "${1:?part}" != p3 ] || stage=--staged
+         part_up "$1" "$stage"; part_check "$1" ;;
   down)  need_root; lab_down ;;
-  shell) need_root; exec $DOCKER exec -it "${1:?node}" /bin/sh ;;
+  shell) need_root; exec $DOCKER exec -it "$(container_name "${1:?node}")" /bin/sh ;;
   ps)    $DOCKER ps --filter "label=$LABEL=1" --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' ;;
   *)     usage ;;
 esac

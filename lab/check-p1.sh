@@ -46,9 +46,8 @@ check_p1() {
   expect_out "IS-IS instance is live" 'Area BADASS' \
       sh_in "$P1_ROUTER" vtysh -c 'show isis summary'
 
-  # only the loopback carries the router-id; no ethernet port is addressed
-  expect_out "no IPv4 address on the ethernet ports" '^$' \
-      sh_in "$P1_ROUTER" sh -c "ip -4 -o addr show scope global | grep -v ': lo ' | tr -d '\n'"
-  expect_out "router-id lives on the loopback" '1\.1\.1\.254/32' \
-      sh_in "$P1_ROUTER" ip -4 -o addr show lo
+  expect_out "no global IPv4 address, including on loopback" '^$' \
+      sh_in "$P1_ROUTER" sh -c "ip -4 -o addr show scope global | tr -d '\n'"
+  expect_out "BGP router-id is configured without an interface IP" 'bgp router-id 1\.1\.1\.254' \
+      sh_in "$P1_ROUTER" vtysh -c 'show running-config'
 }

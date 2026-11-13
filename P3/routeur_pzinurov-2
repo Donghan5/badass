@@ -1,13 +1,13 @@
 #!/bin/sh
 # ===========================================================================
-#  P3 / _pzinurov-4      image: badass/router        ROLE: LEAF / VTEP
+#  P3 / routeur_pzinurov-2      image: badass/router        ROLE: LEAF / VTEP
 # ---------------------------------------------------------------------------
-#      _pzinurov-1 (RR) e2 ----- eth2  _pzinurov-4  eth0 ----- host_pzinurov-3
-#                        10.1.1.8/30            lo 1.1.1.4
+#      routeur_pzinurov-1 (RR) e0 ----- eth0  routeur_pzinurov-2  eth1 ----- host_pzinurov-1
+#                        10.1.1.0/30            lo 1.1.1.2
 #
 #  A leaf does two jobs at once:
 #
-#   1. underlay (pure IP)    : OSPF area 0 on eth2 and on the /32 loopback,
+#   1. underlay (pure IP)    : OSPF area 0 on eth0 and on the /32 loopback,
 #                              so that 1.1.1.1 .. 1.1.1.4 are reachable.
 #   2. overlay  (VXLAN+EVPN) : br0 + vxlan10, and bgpd advertises in EVPN
 #                              every MAC that br0 learns on its access port.
@@ -20,7 +20,7 @@
 #  build the BUM flooding list - that is why no multicast group is needed
 #  anymore, unlike part 2.
 #
-#  The VTEP source address is the LOOPBACK (1.1.1.4), not the interface address:
+#  The VTEP source address is the LOOPBACK (1.1.1.2), not the interface address:
 #  the tunnel then survives any underlay topology change as long as OSPF can
 #  still reach the loopback.
 # ===========================================================================
@@ -28,8 +28,8 @@ set -e
 
 . /badass/lab/env.sh 2>/dev/null || { VNI=10; VXDEV=vxlan10; BRIDGE=br0; VXPORT=4789; }
 
-LOOPBACK=1.1.1.4
-ACCESS_IF=eth0                 # port facing host_pzinurov-3
+LOOPBACK=1.1.1.2
+ACCESS_IF=eth1                 # port facing host_pzinurov-1
 
 # ---------------------------------------------------------------------------
 # 1. routing engines: addressing + OSPF underlay + iBGP/EVPN to the RR
@@ -37,35 +37,35 @@ ACCESS_IF=eth0                 # port facing host_pzinurov-3
 cat > /etc/frr/frr.conf <<'FRR'
 frr version 10.0
 frr defaults traditional
-hostname _pzinurov-4
+hostname routeur_pzinurov-2
 service integrated-vtysh-config
 !
 ip forwarding
 !
 interface lo
- ip address 1.1.1.4/32
+ ip address 1.1.1.2/32
 exit
 !
-interface eth2
- description p2p -> _pzinurov-1 (RR)
- ip address 10.1.1.10/30
+interface eth0
+ description p2p -> routeur_pzinurov-1 (RR)
+ ip address 10.1.1.2/30
  ip ospf network point-to-point
 exit
 !
 router ospf
- ospf router-id 1.1.1.4
- network 1.1.1.4/32 area 0
- network 10.1.1.8/30 area 0
+ ospf router-id 1.1.1.2
+ network 1.1.1.2/32 area 0
+ network 10.1.1.0/30 area 0
 exit
 !
 router bgp 1
- bgp router-id 1.1.1.4
+ bgp router-id 1.1.1.2
  bgp log-neighbor-changes
  no bgp default ipv4-unicast
  !
  neighbor 1.1.1.1 remote-as 1
  neighbor 1.1.1.1 update-source lo
- neighbor 1.1.1.1 description _pzinurov-1 (route reflector)
+ neighbor 1.1.1.1 description routeur_pzinurov-1 (route reflector)
  !
  address-family l2vpn evpn
   neighbor 1.1.1.1 activate
@@ -105,7 +105,7 @@ ip link add "$VXDEV" type vxlan \
 ip link set "$VXDEV" master "$BRIDGE"
 ip link set "$VXDEV" up
 
-# access port: untagged, towards host_pzinurov-3
+# access port: untagged, towards host_pzinurov-1
 ip addr flush dev "$ACCESS_IF" 2>/dev/null || true
 ip link set "$ACCESS_IF" master "$BRIDGE"
 ip link set "$ACCESS_IF" up
@@ -114,6 +114,6 @@ ip link set "$ACCESS_IF" up
 # the VXLAN when you capture the link (as in the subject's screenshots):
 #   bridge link set dev vxlan10 neigh_suppress on    # <- would hide it
 
-echo "### $(hostname)  LEAF/VTEP $LOOPBACK  VNI $VNI  access $ACCESS_IF -> host_pzinurov-3"
+echo "### $(hostname)  LEAF/VTEP $LOOPBACK  VNI $VNI  access $ACCESS_IF -> host_pzinurov-1"
 echo "### evpn vni:" ; vtysh -c 'show evpn vni'              | sed 's/^/    /'
 echo "### bgp evpn:" ; vtysh -c 'show bgp l2vpn evpn summary'| sed 's/^/    /'

@@ -4,3 +4,4 @@
 .codex
 .vagrant-home
 eval-sheet.txt
+__pycache__

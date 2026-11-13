@@ -31,7 +31,7 @@ P2_H1="host_${LOGIN}-1";    P2_H2="host_${LOGIN}-2"
 P2_R1="routeur_${LOGIN}-1"; P2_R2="routeur_${LOGIN}-2"
 P2_SW="Switch_${LOGIN}"
 
-# P3  (_LOGIN-1 is the route reflector / spine, -2..-4 are the leaves/VTEPs)
-P3_RR="_${LOGIN}-1"
-P3_L2="_${LOGIN}-2"; P3_L3="_${LOGIN}-3"; P3_L4="_${LOGIN}-4"
+# P3  (routeur_LOGIN-1 is the route reflector / spine, -2..-4 are the leaves/VTEPs)
+P3_RR="routeur_${LOGIN}-1"
+P3_L2="routeur_${LOGIN}-2"; P3_L3="routeur_${LOGIN}-3"; P3_L4="routeur_${LOGIN}-4"
 P3_H1="host_${LOGIN}-1"; P3_H2="host_${LOGIN}-2"; P3_H3="host_${LOGIN}-3"

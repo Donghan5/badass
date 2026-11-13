@@ -49,6 +49,13 @@ else
     echo "    wrote P1.gns3"
 fi
 
+# Additional source-defined projects. Preserve any existing GUI work.
+for part in P2 P2-multicast P3; do
+    mkdir -p "$GNS3_HOME/projects/$part"
+    write_once "$GNS3_HOME/projects/$part/$part.gns3" \
+        python3 /badass/tools/gns3gen.py project "$part"
+done
+
 echo "==> autostart GNS3 on the desktop"
 cat > /home/vagrant/.config/autostart/gns3.desktop <<DK
 [Desktop Entry]

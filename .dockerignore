@@ -1,0 +1,14 @@
+# Only ship node configuration and image build sources to the builder.
+**
+!P1/
+!P1/**
+!P2/
+!P2/**
+!P3/
+!P3/**
+!lab/
+!lab/env.sh
+# Portable exports already contain images: copying them back causes growth
+# on every rebuild/export cycle.
+**/*.gns3
+**/*.gns3project

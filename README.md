@@ -36,6 +36,9 @@ make up          # build + boot (first run downloads ~700 MB and takes a while)
 make gui         # re-open the VM window
 make ssh         # shell in the VM
 make p1          # run the part 1 checks, no GUI needed
+make p2          # static VXLAN: ping, FDB and packet inspection
+make p2m         # multicast VXLAN, including multicast packet inspection
+make p3          # staged EVPN learning, all host pairs and OSPF/VXLAN capture
 make halt        # stop   /   make destroy   to throw it away
 ```
 
@@ -82,12 +85,26 @@ They are not documentation written after the fact.
 
 ## Addressing
 
-All equipment names carry the login, as the subject requires (`pzinurov`;
-change `LOGIN` in `lab/env.sh` and regenerate).
+All equipment names carry group member login `pzinurov`. Role prefixes make
+the equipment easy to identify during evaluation: `host_` for end devices,
+`routeur_` for routers and `Switch_` for the P2 underlay switch. The subject
+requires a consistent name containing a member's login; leading underscores
+in its examples are not required.
+
+P3 uses `routeur_pzinurov-1` for the RR and `routeur_pzinurov-2..4` for VTEPs.
+The node configuration filename, GNS3 node name and FRR hostname match.
+P2's `_s` / `_g` configuration suffixes select static / multicast mode for
+the same router. `P2-multicast` is a project name, not an equipment prefix;
+the main static submission remains `P2/P2.gns3project`.
+
+Renaming requires updating `lab/env.sh`, `tools/gns3gen.py`,
+node configuration filenames and their internal references together, followed
+by rebuilding images and exports; changing `LOGIN` alone is insufficient.
 
 **P1** — one host, one router, no link.
 `routeur_pzinurov` runs BGP AS 65001, OSPF and IS-IS area `49.0001`, all with
-router-id `1.1.1.254`. No interface address: *"No IP address should be
+router-id `1.1.1.254` (a protocol identifier, not a loopback address).
+No interface address: *"No IP address should be
 configured by default."*
 
 **P2** — VXLAN **VNI 10**, bridge `br0`, device `vxlan10`, UDP 4789.
@@ -99,7 +116,7 @@ configured by default."*
 | static mode | `*_s` configs — `remote 10.1.1.x` |
 | multicast mode | `*_g` configs — `group 239.1.1.1` |
 
-**P3** — BGP EVPN, AS 1 (iBGP), `_pzinurov-1` is the route reflector.
+**P3** — BGP EVPN, AS 1 (iBGP), `routeur_pzinurov-1` is the route reflector.
 
 | | |
 |---|---|
@@ -114,13 +131,59 @@ configured by default."*
 
 | part | state |
 |---|---|
-| **P1** | **done and verified** — images build, GNS3 templates + project generated, nodes boot and self-configure inside GNS3, `run.sh test p1` is 20/20 |
-| P2 | configuration files written and commented, topology builder ready; not verified yet |
-| P3 | configuration files written and commented, topology builder ready; not verified yet |
+| P1 | headless checks: 20/20; main and auxiliary consoles use separate port pairs; no global IPv4 on any interface |
+| P2 static | headless checks: 11/11, including bidirectional ping, remote MAC learning and VXLAN/ICMP capture |
+| P2 multicast | headless checks: 12/12, including multicast VXLAN packets |
+| P3 | headless checks: 22/22, covering OSPF, EVPN type 3, MAC-only type 2 reflection, all six directed host pairs and OSPF/VXLAN/ICMP capture |
 
-`sudo /badass/lab/run.sh up p2` (or `p2m`, `p3`) brings those topologies up for
-hand inspection. Their automated checks, the GNS3 projects and the
-`.gns3project` exports are the next step.
+Checks were run with rootless Podman in an isolated network namespace on the
+development host. Generated topology JSON was also validated against GNS3
+2.2.55 schemas. Portable images were restored into an empty Podman store, and
+the generated P1 router startup was checked without mounting repository files.
+GUI import/start inside the VirtualBox VM still needs checking;
+the development host lacks `/dev/vboxdrv`.
+
+`sudo /badass/lab/run.sh test p3` starts hosts with their access interfaces down,
+waits for EVPN routes, then sends ARP probes from `0.0.0.0` to demonstrate MAC
+learning without assigning IPv4. It finally applies host addresses and tests
+connectivity. For manual staged inspection use `up p3 --staged`.
+
+## Portable projects
+
+`tools/gns3gen.py` defines the topologies. The submitted `P1/P1.gns3project`,
+`P2/P2.gns3project`, `P2/P2-multicast.gns3project` and `P3/P3.gns3project` ZIPs
+contain `project.gns3`, both actual Docker images and a `load-images.sh` restore
+script. Duplicate uncompressed `.gns3` files are not kept in the repository;
+VM provisioning generates its working copies under `~/GNS3/projects/`.
+
+GNS3 2.2 skips Docker images in its normal `include_images` export. Our ZIPs
+therefore carry `docker save` archives under `docker-images/`. Before importing
+a portable project on a fresh machine, inside the VM:
+
+```sh
+unzip /badass/P1/P1.gns3project -d /tmp/badass-p1-import
+sh /tmp/badass-p1-import/load-images.sh
+# GNS3: File -> Import portable project -> /badass/P1/P1.gns3project
+```
+
+The same procedure applies to P2 and P3. For P3, start only routers first to
+inspect type 3 routes. Hosts start in a shell without applying their IPv4
+configuration; later run `sh /badass/P3/host_pzinurov-N` in each host console.
+Routers use `routeur_pzinurov-N` consistently in configuration filenames,
+GNS3 node names and FRR hostnames.
+
+After changing node configurations, rebuild images before exporting:
+
+```sh
+make images
+make export-all
+# Or inside the VM:
+python3 /badass/tools/portable.py verify /badass/P1/P1.gns3project
+```
+
+Exports use `gns3gen.py` definitions, not manual GUI edits. Verification checks
+topology consistency, ZIP integrity and image manifests/configuration/layers.
+`.dockerignore` keeps exported images out of subsequent Docker build contexts.
 
 ### Notes from building it
 

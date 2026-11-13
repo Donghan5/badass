@@ -38,10 +38,14 @@ need_root() {
 # node_start <name> <image>
 # --network none  : GNS3 does the same, no IP address is configured by default
 # --privileged    : the node must be able to create bridges/vxlan in its netns
+container_name() { printf 'badass-%s' "$1"; }
+
 node_start() {
   local name=$1 image=$2
-  $DOCKER rm -f "$name" >/dev/null 2>&1 || true
-  $DOCKER run -d --name "$name" --hostname "$name" \
+  local container
+  container=$(container_name "$name")
+  $DOCKER rm -f "$container" >/dev/null 2>&1 || true
+  $DOCKER run -d --name "$container" --hostname "$name" \
       --label "$LABEL=1" \
       --privileged --network none \
       --cap-add=ALL \
@@ -51,20 +55,20 @@ node_start() {
   step "node $name ($image)"
 }
 
-node_pid() { $DOCKER inspect -f '{{.State.Pid}}' "$1" 2>/dev/null; }
+node_pid() { $DOCKER inspect -f '{{.State.Pid}}' "$(container_name "$1")" 2>/dev/null; }
 
 # nsx <node> <cmd...>   run a command in the node's network namespace (host fs)
 nsx() { local n=$1; shift; nsenter -t "$(node_pid "$n")" -n -- "$@"; }
 
 # sh_in <node> <cmd...> run a command *inside* the container
-sh_in() { local n=$1; shift; $DOCKER exec "$n" "$@"; }
+sh_in() { local n=$1; shift; $DOCKER exec "$(container_name "$n")" "$@"; }
 
 # apply <node> <config-file-relative-to-repo> [args...]
 # runs one of the committed P1/P2/P3 node configuration files inside the node
 apply() {
   local n=$1 cfg=$2; shift 2
   step "apply $cfg -> $n"
-  $DOCKER exec "$n" sh "$REPO_MNT/$cfg" "$@" \
+  sh_in "$n" sh "$REPO_MNT/$cfg" "$@" \
     || die "config $cfg failed on $n"
 }
 
@@ -72,7 +76,7 @@ apply() {
 # cabling
 # --------------------------------------------------------------------------
 
-# link <nodeA> <ethA> <nodeB> <ethB>   -- point to point cable (veth pair)
+# link <nodeA> <ethA> <nodeB> <ethB> [down] -- optionally leave side B down
 link() {
   local a=$1 ia=$2 b=$3 ib=$4
   local pa pb ta tb
@@ -86,7 +90,7 @@ link() {
   nsx "$a" ip link set "$ta" name "$ia"
   nsx "$b" ip link set "$tb" name "$ib"
   nsx "$a" ip link set "$ia" up
-  nsx "$b" ip link set "$ib" up
+  nsx "$b" ip link set "$ib" "${5:-up}"
   step "cable $a:$ia <-> $b:$ib"
 }
 
@@ -98,9 +102,7 @@ link() {
 switch_add() {
   local sw=$1
   ip link del "$sw" 2>/dev/null || true
-  ip link add "$sw" type bridge
-  echo 0 > "/sys/class/net/$sw/bridge/multicast_snooping" 2>/dev/null || true
-  echo 0 > "/sys/class/net/$sw/bridge/stp_state" 2>/dev/null || true
+  ip link add "$sw" type bridge mcast_snooping 0 stp_state 0
   ip link set "$sw" up
   step "switch $sw (linux bridge, multicast flooding)"
 }
