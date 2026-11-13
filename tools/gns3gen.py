@@ -5,6 +5,9 @@ Generate GNS3 2.2 configuration from the topology described in this repo.
     gns3gen.py gui-config        -> ~/.config/GNS3/2.2/gns3_gui.conf
     gns3gen.py templates         -> ~/.config/GNS3/2.2/gns3_controller.conf
     gns3gen.py project P1        -> ~/GNS3/projects/P1/P1.gns3
+    gns3gen.py project P2        -> static VXLAN topology
+    gns3gen.py project P2-multicast -> multicast VXLAN topology
+    gns3gen.py project P3        -> OSPF + BGP EVPN fabric (hosts unaddressed)
 
 Why generate instead of clicking: the topology, the node names, the port
 numbers and the image names all have to match the configuration files
@@ -180,8 +183,119 @@ def project_p1():
         "links": [],
     }
 
+def ethernet_switch(name, x, y, ports=2):
+    """Built-in GNS3 switch: all ports are access ports in VLAN 1."""
+    return {
+        "compute_id": "local",
+        "console": None,
+        "console_type": "none",
+        "height": 32,
+        "label": label(name),
+        "name": name,
+        "node_id": uid("node", name),
+        "node_type": "ethernet_switch",
+        "port_name_format": "Ethernet{0}",
+        "properties": {
+            "ports_mapping": [
+                {"name": f"Ethernet{i}", "port_number": i,
+                 "type": "access", "vlan": 1}
+                for i in range(ports)
+            ],
+        },
+        "symbol": ":/symbols/ethernet_switch.svg",
+        "width": 72,
+        "x": x,
+        "y": y,
+        "z": 1,
+    }
 
-PROJECTS = {"P1": project_p1}
+
+def link(node_a, adapter_a, node_b, adapter_b):
+    """Docker ethN uses adapter N/port 0; switch port N uses adapter 0/port N."""
+    def endpoint(node, adapter):
+        switch = node["node_type"] == "ethernet_switch"
+        return {
+            "node_id": node["node_id"],
+            "adapter_number": 0 if switch else adapter,
+            "port_number": adapter if switch else 0,
+        }
+
+    return {
+        "link_id": uid("link", node_a["node_id"], adapter_a,
+                       node_b["node_id"], adapter_b),
+        "nodes": [endpoint(node_a, adapter_a), endpoint(node_b, adapter_b)],
+        "suspend": False,
+    }
+
+
+def project_p2(mode="static"):
+    """Two hosts and two VTEPs connected through an underlay switch."""
+    if mode not in ("static", "multicast"):
+        raise ValueError("P2 mode must be static or multicast")
+    suffix = "_s" if mode == "static" else "_g"
+    hosts = [f"host_{LOGIN}-{i}" for i in (1, 2)]
+    routers = [f"routeur_{LOGIN}-{i}" for i in (1, 2)]
+    h1, h2 = [
+        docker_node(name, IMG_HOST, 2, SYM_HOST, -400, y, console,
+                    selfconfig("P2", name))
+        for name, y, console in zip(hosts, (-150, 150), (5010, 5012))
+    ]
+    r1, r2 = [
+        docker_node(name, IMG_ROUTER, 2, SYM_ROUTER, -100, y, console,
+                    selfconfig("P2", name + suffix))
+        for name, y, console in zip(routers, (-150, 150), (5014, 5016))
+    ]
+    switch = ethernet_switch(f"Switch_{LOGIN}", 200, 0)
+    return {
+        "nodes": [h1, h2, r1, r2, switch],
+        "links": [
+            link(h1, 1, r1, 1),
+            link(h2, 1, r2, 1),
+            link(r1, 0, switch, 0),
+            link(r2, 0, switch, 1),
+        ],
+    }
+
+
+def project_p3():
+    """One RR and three VTEPs; hosts start without applying their IP configs.
+
+    Start only the routers first for the type-3-only evaluation stage.
+    Later, apply sh /badass/P3/host_<login>-N in each host console to add IPv4.
+    """
+    rr_name = f"_{LOGIN}-1"
+    rr = docker_node(rr_name, IMG_ROUTER, 3, SYM_ROUTER, 0, -250, 5020,
+                     selfconfig("P3", rr_name))
+    leaves = [
+        docker_node(f"_{LOGIN}-{i}", IMG_ROUTER, 3, SYM_ROUTER,
+                    x, 0, console, selfconfig("P3", f"_{LOGIN}-{i}"))
+        for i, x, console in zip((2, 3, 4), (-300, 0, 300), (5022, 5024, 5026))
+    ]
+    hosts = [
+        docker_node(f"host_{LOGIN}-{i}", IMG_HOST, 2, SYM_HOST,
+                    x, 250, console, "/bin/sh")
+        for i, x, console in zip((1, 2, 3), (-300, 0, 300), (5028, 5030, 5032))
+    ]
+    # Match lab/topo-p3.sh and the interfaces used in the committed configs.
+    return {
+        "nodes": [rr, *leaves, *hosts],
+        "links": [
+            link(rr, 0, leaves[0], 0),
+            link(rr, 1, leaves[1], 1),
+            link(rr, 2, leaves[2], 2),
+            link(leaves[0], 1, hosts[0], 1),
+            link(leaves[1], 0, hosts[1], 0),
+            link(leaves[2], 0, hosts[2], 0),
+        ],
+    }
+
+
+PROJECTS = {
+    "P1": project_p1,
+    "P2": project_p2,
+    "P2-multicast": lambda: project_p2("multicast"),
+    "P3": project_p3,
+}
 
 
 def project(name):
@@ -224,6 +338,8 @@ def main(argv):
     elif cmd == "gui-config":
         out = gui_config()
     elif cmd == "project":
+        if len(argv) != 3 or argv[2] not in PROJECTS:
+            sys.exit("usage: gns3gen.py project {%s}" % ",".join(PROJECTS))
         out = project(argv[2])
     else:
         sys.exit("unknown command: %s" % cmd)
