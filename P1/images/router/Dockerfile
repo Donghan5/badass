@@ -33,9 +33,9 @@ RUN apk add --no-cache \
 # Which routing engines this image runs.  The subject asks for bgpd, ospfd and
 # an IS-IS engine to be active; zebra is the RIB/kernel dataplane manager that
 # all of them talk to.  frr-start reads this very file to decide what to spawn.
-COPY images/router/daemons      /etc/frr/daemons
-COPY images/router/vtysh.conf   /etc/frr/vtysh.conf
-COPY images/router/frr-start    /usr/local/bin/frr-start
+COPY P1/images/router/daemons      /etc/frr/daemons
+COPY P1/images/router/vtysh.conf   /etc/frr/vtysh.conf
+COPY P1/images/router/frr-start    /usr/local/bin/frr-start
 
 RUN chmod +x /usr/local/bin/frr-start \
  && install -d -o frr -g frr -m 0755 /var/run/frr /var/log/frr \

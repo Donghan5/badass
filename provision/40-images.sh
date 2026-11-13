@@ -7,10 +7,10 @@ set -euo pipefail
 cd /badass
 
 echo "==> building badass/host:latest   (alpine = busybox)"
-docker build -q -f images/host/Dockerfile   -t badass/host:latest   .
+docker build -q -f P1/images/host/Dockerfile   -t badass/host:latest   .
 
 echo "==> building badass/router:latest  (alpine + FRR zebra/bgpd/ospfd/isisd)"
-docker build -q -f images/router/Dockerfile -t badass/router:latest .
+docker build -q -f P1/images/router/Dockerfile -t badass/router:latest .
 
 docker images | grep -E 'REPOSITORY|badass/'
 echo "==> images done"

@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 LOGIN=${LOGIN:-pzinurov}
 
-# Docker images built from images/host and images/router
+# Docker images built from P1/images/host and P1/images/router
 IMG_HOST=${IMG_HOST:-badass/host:latest}
 IMG_ROUTER=${IMG_ROUTER:-badass/router:latest}
 

@@ -67,8 +67,8 @@ goes green, not when the canvas looks right.
 ```
 Vagrantfile          the VM
 provision/           how the VM is built, step by step
-images/host/         image 1  (busybox end device)
-images/router/       image 2  (FRR router / VTEP)
+P1/images/host/     image 1  (busybox end device)
+P1/images/router/   image 2  (FRR router / VTEP)
 lab/                 headless topology builder + checks
 tools/gns3gen.py     generates GNS3 templates and project files
 P1/ P2/ P3/          one commented configuration file per piece of equipment
@@ -129,7 +129,7 @@ Three things that cost real time and are worth remembering:
 * **FRR 10 needs `mgmtd`.** Since FRR 9/10 the `interface … / ip address …`
   configuration is owned by `mgmtd`, not `zebra`. Without it every interface
   address in `frr.conf` is silently dropped — `vtysh -b` reports success and
-  the address simply never appears. `images/router/daemons` starts it first.
+  the address simply never appears. `P1/images/router/daemons` starts it first.
 * **busybox `pgrep -x` matches the whole command line**, not the process name,
   so `pgrep -x zebra` never matches `/usr/lib/frr/zebra -d …`. The image uses
   `pidof` instead.
